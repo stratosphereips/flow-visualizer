@@ -1,15 +1,9 @@
-# Awesome Code Template
+# Flow timeline visualizer
 
-This repository is a template with basic elements that every repository at Stratosphere should follow.
+## Run from stdin
 
-## Features
+`head -n 100000 conn.log|sort -n | python flow_visualizer.py --stdin --min-duration 60`
 
-Write about what makes your [tool|code|data|repo] special.
+## Run from parameter
 
-## Usage
-
-Write about how others can use your [tool|code|data|repo].
-
-# About
-
-This [tool|code|data|repo] was developed at the Stratosphere Laboratory at the Czech Technical University in Prague.
+`python flow_visualizer.py --min-duration 60 conn.log`
