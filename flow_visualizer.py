@@ -125,14 +125,30 @@ TEMPLATE = '''
             tooltip.style.display = 'none';
         }
 
+        function evaluateExpression(flowText, expr) {
+            try {
+                return Function('"use strict"; var flowText = "' + flowText + '"; return (' + expr + ')')();
+            } catch (e) {
+                return false;
+            }
+        }
+
         function filterFlows() {
             var textFilter = document.getElementById('text-filter').value.toLowerCase();
             var durationFilter = parseFloat(document.getElementById('duration-filter').value);
             var flows = document.getElementsByClassName('flow-container');
+            var filterExpr = textFilter
+                .replace(/and/gi, '&&')
+                .replace(/or/gi, '||')
+                .replace(/not/gi, '!')
+                .replace(/([a-zA-Z0-9]+)/g, 'flowText.includes("$1")');
+
             for (var i = 0; i < flows.length; i++) {
                 var flowText = flows[i].getElementsByClassName('flow-text')[0].innerText.toLowerCase();
                 var flowDuration = parseFloat(flows[i].getElementsByClassName('flow')[0].dataset.duration);
-                if (flowText.includes(textFilter) && (isNaN(durationFilter) || flowDuration >= durationFilter)) {
+                var textMatch = evaluateExpression(flowText, filterExpr);
+                var durationMatch = isNaN(durationFilter) || flowDuration >= durationFilter;
+                if (textMatch && durationMatch) {
                     flows[i].style.display = 'flex';
                 } else {
                     flows[i].style.display = 'none';
@@ -143,7 +159,7 @@ TEMPLATE = '''
 </head>
 <body>
     <h1>Zeek Conn Flows</h1>
-    <input type="text" id="text-filter" onkeyup="filterFlows()" placeholder="Filter by text...">
+    <input type="text" id="text-filter" onkeyup="filterFlows()" placeholder="Filter by text... (use 'not', 'and', 'or', parentheses)">
     <input type="number" id="duration-filter" onkeyup="filterFlows()" placeholder="Minimum duration (seconds)">
     <div class="timeline">
         {% for flow in flows %}
