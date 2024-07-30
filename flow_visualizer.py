@@ -1,5 +1,6 @@
 from flask import Flask, render_template_string
 import pandas as pd
+import numpy as np
 import argparse
 import sys
 import json
@@ -34,9 +35,16 @@ def read_zeek_conn_log(file_path=None, use_stdin=False):
                     data.append(parts[:len(columns)])
     
     df = pd.DataFrame(data, columns=columns)
+    
+    # Replace '-' with NaN
+    df.replace('-', np.nan, inplace=True)
+    # Replace NaN in 'duration' with 0
+    df['duration'].replace(np.nan, 0, inplace=True)
+    
     df['ts'] = df['ts'].astype(float)
     df['duration'] = df['duration'].astype(float)
     df['human_ts'] = df['ts'].apply(lambda x: datetime.utcfromtimestamp(x).strftime('%Y-%m-%d %H:%M:%S'))
+    
     return df
 
 # Generate a random color
@@ -185,4 +193,3 @@ if __name__ == '__main__':
         parser.error('Must provide a filename or use --stdin to read from stdin')
 
     app.run(debug=True)
-
