@@ -106,10 +106,22 @@ def generate_shade(color, shade_factor):
     shaded_rgb = colorsys.hls_to_rgb(hls[0], max(0, min(1, hls[1] * shade_factor)), hls[2])
     return "#{:02x}{:02x}{:02x}".format(int(shaded_rgb[0] * 255), int(shaded_rgb[1] * 255), int(shaded_rgb[2] * 255))
 
+# Determine if a color is dark
+def is_dark(color):
+    color = color.lstrip('#')
+    rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+    hls = colorsys.rgb_to_hls(rgb[0]/255, rgb[1]/255, rgb[2]/255)
+    return hls[1] < 0.5
+
 # Custom filter to enforce minimum width
 @app.template_filter('min_width')
 def min_width(value, min_width):
     return max(value, min_width)
+
+# Custom filter to check if a color is dark
+@app.template_filter('is_dark')
+def jinja_is_dark(color):
+    return is_dark(color)
 
 @app.route('/')
 def index():
@@ -223,7 +235,7 @@ TEMPLATE = '''
             for (var i = 0; i < flows.length; i++) {
                 var flowText = flows[i].getElementsByClassName('flow-text')[0].innerText.toLowerCase();
                 var flowDuration = parseFloat(flows[i].getElementsByClassName('flow')[0].dataset.duration);
-                var textMatch = evaluateExpression(flowText, filterExpr);
+                var textMatch = textFilter === "" || evaluateExpression(flowText, filterExpr);
                 var durationMatch = isNaN(durationFilter) || flowDuration >= durationFilter;
                 if (textMatch && durationMatch) {
                     flows[i].style.display = 'flex';
@@ -242,7 +254,7 @@ TEMPLATE = '''
         {% for flow in flows %}
         <div class="flow-container" style="margin-left: {{ (flow.relative_start / max_relative_start) * 100 }}%;">
             <div class="flow" data-duration="{{ flow.duration }}" style="background-color: {{ flow.color }}; width: {{ ((flow.duration / max_duration) * 100) | min_width(0.5) }}%;" onmouseover='showTooltip(event, {{ flow | tojson }});' onmouseout="hideTooltip();"></div>
-            <div class="flow-text">{{ flow.human_ts }} - {{ flow.id_orig_h }}:{{ flow.id_orig_p }} -> {{ flow.id_resp_h }}:{{ flow.id_resp_p }}</div>
+            <div class="flow-text" style="color: {{ 'black' if ((flow.duration / max_duration) * 100) < 5 else ('white' if flow.color|is_dark else 'black') }};">{{ flow.human_ts }} - {{ flow.id_orig_h }}:{{ flow.id_orig_p }} -> {{ flow.id_resp_h }}:{{ flow.id_resp_p }}</div>
         </div>
         {% endfor %}
     </div>
