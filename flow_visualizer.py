@@ -106,6 +106,11 @@ def generate_shade(color, shade_factor):
     shaded_rgb = colorsys.hls_to_rgb(hls[0], max(0, min(1, hls[1] * shade_factor)), hls[2])
     return "#{:02x}{:02x}{:02x}".format(int(shaded_rgb[0] * 255), int(shaded_rgb[1] * 255), int(shaded_rgb[2] * 255))
 
+# Custom filter to enforce minimum width
+@app.template_filter('min_width')
+def min_width(value, min_width):
+    return max(value, min_width)
+
 @app.route('/')
 def index():
     if args.stdin:
@@ -236,7 +241,7 @@ TEMPLATE = '''
     <div class="timeline">
         {% for flow in flows %}
         <div class="flow-container" style="margin-left: {{ (flow.relative_start / max_relative_start) * 100 }}%;">
-            <div class="flow" data-duration="{{ flow.duration }}" style="background-color: {{ flow.color }}; width: {{ (flow.duration / max_duration) * 100 }}%;" onmouseover='showTooltip(event, {{ flow | tojson }});' onmouseout="hideTooltip();"></div>
+            <div class="flow" data-duration="{{ flow.duration }}" style="background-color: {{ flow.color }}; width: {{ ((flow.duration / max_duration) * 100) | min_width(0.5) }}%;" onmouseover='showTooltip(event, {{ flow | tojson }});' onmouseout="hideTooltip();"></div>
             <div class="flow-text">{{ flow.human_ts }} - {{ flow.id_orig_h }}:{{ flow.id_orig_p }} -> {{ flow.id_resp_h }}:{{ flow.id_resp_p }}</div>
         </div>
         {% endfor %}
