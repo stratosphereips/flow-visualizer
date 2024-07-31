@@ -9,22 +9,57 @@ import random
 
 app = Flask(__name__)
 
+# Normalize column names to match expected format
+def normalize_column_names(df):
+    column_mapping = {
+        "id.orig_h": "id_orig_h",
+        "id.orig_p": "id_orig_p",
+        "id.resp_h": "id_resp_h",
+        "id.resp_p": "id_resp_p",
+        "orig_bytes": "orig_bytes",
+        "resp_bytes": "resp_bytes",
+        "conn_state": "conn_state",
+        "local_orig": "local_orig",
+        "local_resp": "local_resp",
+        "missed_bytes": "missed_bytes",
+        "history": "history",
+        "orig_pkts": "orig_pkts",
+        "orig_ip_bytes": "orig_ip_bytes",
+        "resp_pkts": "resp_pkts",
+        "resp_ip_bytes": "resp_ip_bytes",
+        "tunnel_parents": "tunnel_parents",
+        "ts": "ts",
+        "uid": "uid",
+        "proto": "proto",
+        "service": "service",
+        "duration": "duration"
+    }
+    df.rename(columns=column_mapping, inplace=True)
+    return df
+
 # Read Zeek conn log file or stdin
 def read_zeek_conn_log(file_path=None, use_stdin=False):
-    columns = ["ts", "uid", "id_orig_h", "id_orig_p", "id_resp_h", "id_resp_p", 
-               "proto", "service", "duration", "orig_bytes", "resp_bytes", 
-               "conn_state", "local_orig", "local_resp", "missed_bytes", 
-               "history", "orig_pkts", "orig_ip_bytes", "resp_pkts", "resp_ip_bytes", 
-               "tunnel_parents"]
-    
-    data = []
     if use_stdin:
-        source = sys.stdin
+        lines = sys.stdin.readlines()
     else:
-        source = open(file_path, 'r')
-
-    with source as file:
-        for line in file:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+    
+    # Determine the file type by checking the first line
+    if lines[0].startswith('{'):
+        # JSON format
+        data = [json.loads(line) for line in lines]
+        df = pd.DataFrame(data)
+    else:
+        # Tab-separated format
+        columns = ["ts", "uid", "id.orig_h", "id.orig_p", "id.resp_h", "id.resp_p", 
+                   "proto", "service", "duration", "orig_bytes", "resp_bytes", 
+                   "conn_state", "local_orig", "local_resp", "missed_bytes", 
+                   "history", "orig_pkts", "orig_ip_bytes", "resp_pkts", "resp_ip_bytes", 
+                   "tunnel_parents"]
+        
+        data = []
+        for line in lines:
             if not line.startswith("#"):
                 parts = line.split()
                 if len(parts) == len(columns):
@@ -33,16 +68,22 @@ def read_zeek_conn_log(file_path=None, use_stdin=False):
                     while len(parts) < len(columns):
                         parts.append("-")
                     data.append(parts[:len(columns)])
+        
+        df = pd.DataFrame(data, columns=columns)
+        
+        # Replace '-' with NaN
+        df.replace('-', np.nan, inplace=True)
+        # Replace NaN in 'duration' with 0
+        df['duration'].replace(np.nan, 0, inplace=True)
+        
+        # Convert columns to appropriate types
+        df['ts'] = df['ts'].astype(float)
+        df['duration'] = df['duration'].astype(float)
     
-    df = pd.DataFrame(data, columns=columns)
-    
-    # Replace '-' with NaN
-    df.replace('-', np.nan, inplace=True)
-    # Replace NaN in 'duration' with 0
-    df['duration'].replace(np.nan, 0, inplace=True)
-    
-    df['ts'] = df['ts'].astype(float)
-    df['duration'] = df['duration'].astype(float)
+    # Normalize column names
+    df = normalize_column_names(df)
+
+    # Add human-readable timestamp
     df['human_ts'] = df['ts'].apply(lambda x: datetime.utcfromtimestamp(x).strftime('%Y-%m-%d %H:%M:%S'))
     
     return df
@@ -193,3 +234,4 @@ if __name__ == '__main__':
         parser.error('Must provide a filename or use --stdin to read from stdin')
 
     app.run(debug=True)
+
