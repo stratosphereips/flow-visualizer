@@ -6,6 +6,7 @@ import sys
 import json
 from datetime import datetime
 import random
+import colorsys
 
 app = Flask(__name__)
 
@@ -73,12 +74,17 @@ def read_zeek_conn_log(file_path=None, use_stdin=False):
         
         # Replace '-' with NaN
         df.replace('-', np.nan, inplace=True)
-        # Replace NaN in 'duration' with 0
-        df['duration'].replace(np.nan, 0, inplace=True)
         
         # Convert columns to appropriate types
         df['ts'] = df['ts'].astype(float)
         df['duration'] = df['duration'].astype(float)
+        df['orig_bytes'] = df['orig_bytes'].astype(float)
+        df['resp_bytes'] = df['resp_bytes'].astype(float)
+        df['missed_bytes'] = df['missed_bytes'].astype(float)
+        df['orig_pkts'] = df['orig_pkts'].astype(float)
+        df['orig_ip_bytes'] = df['orig_ip_bytes'].astype(float)
+        df['resp_pkts'] = df['resp_pkts'].astype(float)
+        df['resp_ip_bytes'] = df['resp_ip_bytes'].astype(float)
     
     # Normalize column names
     df = normalize_column_names(df)
@@ -91,6 +97,14 @@ def read_zeek_conn_log(file_path=None, use_stdin=False):
 # Generate a random color
 def generate_random_color():
     return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
+# Generate a shade of a given color
+def generate_shade(color, shade_factor):
+    color = color.lstrip('#')
+    rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+    hls = colorsys.rgb_to_hls(rgb[0]/255, rgb[1]/255, rgb[2]/255)
+    shaded_rgb = colorsys.hls_to_rgb(hls[0], max(0, min(1, hls[1] * shade_factor)), hls[2])
+    return "#{:02x}{:02x}{:02x}".format(int(shaded_rgb[0] * 255), int(shaded_rgb[1] * 255), int(shaded_rgb[2] * 255))
 
 @app.route('/')
 def index():
@@ -107,12 +121,21 @@ def index():
     max_duration = df['duration'].max()
     max_relative_start = df['relative_start'].max()
     
-    # Assign colors to source IPs
-    unique_ips = df['id_orig_h'].unique()
-    ip_colors = {ip: generate_random_color() for ip in unique_ips}
+    # Assign colors to source-destination IP pairs
+    unique_ip_pairs = df[['id_orig_h', 'id_resp_h']].drop_duplicates()
+    ip_pair_colors = {tuple(row): generate_random_color() for row in unique_ip_pairs.values}
+    
+    # Assign shades to destination ports
+    port_shades = {}
+    for (src_ip, dst_ip), base_color in ip_pair_colors.items():
+        ports = df[(df['id_orig_h'] == src_ip) & (df['id_resp_h'] == dst_ip)]['id_resp_p'].unique()
+        shades = {port: generate_shade(base_color, 1 - 0.2 * i) for i, port in enumerate(ports)}
+        port_shades.update({(src_ip, dst_ip, port): shade for port, shade in shades.items()})
+    
+    df['color'] = df.apply(lambda row: port_shades[(row['id_orig_h'], row['id_resp_h'], row['id_resp_p'])], axis=1)
     
     flows = df.to_dict(orient='records')
-    return render_template_string(TEMPLATE, flows=flows, max_duration=max_duration, max_relative_start=max_relative_start, ip_colors=ip_colors)
+    return render_template_string(TEMPLATE, flows=flows, max_duration=max_duration, max_relative_start=max_relative_start)
 
 TEMPLATE = '''
 <!DOCTYPE html>
@@ -213,7 +236,7 @@ TEMPLATE = '''
     <div class="timeline">
         {% for flow in flows %}
         <div class="flow-container" style="margin-left: {{ (flow.relative_start / max_relative_start) * 100 }}%;">
-            <div class="flow" data-duration="{{ flow.duration }}" style="background-color: {{ ip_colors[flow.id_orig_h] }}; width: {{ (flow.duration / max_duration) * 100 }}%;" onmouseover='showTooltip(event, {{ flow | tojson }});' onmouseout="hideTooltip();"></div>
+            <div class="flow" data-duration="{{ flow.duration }}" style="background-color: {{ flow.color }}; width: {{ (flow.duration / max_duration) * 100 }}%;" onmouseover='showTooltip(event, {{ flow | tojson }});' onmouseout="hideTooltip();"></div>
             <div class="flow-text">{{ flow.human_ts }} - {{ flow.id_orig_h }}:{{ flow.id_orig_p }} -> {{ flow.id_resp_h }}:{{ flow.id_resp_p }}</div>
         </div>
         {% endfor %}
